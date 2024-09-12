@@ -1,0 +1,68 @@
+Parameters:
+  BucketRegion:
+    Type: String
+    Default: us-east-2
+    Description: region to create the S3 bucket to use for Terraform state
+
+Resources:
+  DenyMemberAccountInstances:
+    Type: AWS::Organizations::Policy
+    Properties:
+      Type: SERVICE_CONTROL_POLICY
+      Name: DenyMemberAccountInstances
+      Content:
+        Version: 2012-10-17
+        Statement:
+          - Sid: DenyMemberAccountInstances
+            Effect: Deny
+            Action:
+              - 'sso:CreateInstance'
+            Resource: '*'
+  
+  TfStateBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: 'tf-state-fjzovzbou'
+      Tags: 
+        - Key: "Lifecycle"
+          Value: "bootstrap"
+        - Key: "SupportingApp"
+          Value: "Terraform"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+
+  TfStateLockTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: 'tf-state-lock'
+      BillingMode: 'PAY_PER_REQUEST'
+      AttributeDefinitions:
+        - AttributeName: LockID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: LockID
+          KeyType: HASH
+      Tags: 
+        - Key: "Lifecycle"
+          Value: "bootstrap"
+        - Key: "SupportingApp"
+          Value: "Terraform"
+  
+  TerraformStateS3BucketBucketPolicy:
+    DependsOn:
+      - TfStateBucket
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TfStateBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyDeletingTerraformStateFiles
+            Effect: Deny
+            Principal: "*"
+            Action: 's3:DeleteObject'
+            Resource: !Sub 'arn:aws:s3:::${TfStateBucket}/*'
+
